@@ -1283,83 +1283,45 @@ export default function App() {
               A Escolha Inteligente dos Professores de Sucesso
             </h2>
             <p className="text-stone-600 text-sm md:text-base">
-              Veja como o Gabarito IA está transformando a rotina escolar, economizando horas preciosas de correção de provas e trazendo 100% de precisão para as turmas.
+              Veja como o Gabarito IA está transformando a rotina escolar, economizando horas preciosas de correção de provas e trazendo mais leveza para a vida docente.
             </p>
           </div>
 
           {/* Testimonial Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex justify-center">
             
-            {/* Card 1: Female Teacher */}
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col h-full">
-              <div className="relative h-48 w-full bg-stone-100 overflow-hidden">
+            {/* Card 1: Female Teacher (Public Servant) */}
+            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row h-full max-w-3xl w-full">
+              <div className="relative h-56 md:h-auto md:w-80 bg-stone-100 overflow-hidden shrink-0">
                 <img 
-                  src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800" 
-                  alt="Professora Mariana sorrindo na sala de aula" 
-                  className="w-full h-full object-cover object-top hover:scale-105 transition duration-500"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute bottom-3 left-3 bg-gabarito-brown text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm font-mono">
-                  ★ DEPOIMENTO REAL
-                </div>
-              </div>
-              <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                <div className="space-y-2">
-                  <div className="flex text-amber-500 text-sm gap-0.5">
-                    <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-                    <span className="text-stone-700 font-bold text-xs ml-1">(5.0)</span>
-                  </div>
-                  <h3 className="font-bold text-stone-900 text-lg">
-                    "Corrigi 120 provas em menos de 10 minutos!"
-                  </h3>
-                  <p className="text-stone-600 text-xs md:text-sm leading-relaxed">
-                    "O Gabarito IA mudou completamente a minha vida pedagógica. Antes eu passava finais de semana inteiros corrigindo gabaritos manualmente. Agora, com a câmera do celular, o aplicativo lê tudo instantaneamente e gera as notas na hora. Vale cada centavo investir nessa facilidade!"
-                  </p>
-                </div>
-                <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold text-stone-800 text-sm">Profª. Mariana Mendes</h4>
-                    <p className="text-stone-500 text-[11px]">Professora de Biologia • Ensino Médio</p>
-                  </div>
-                  <span className="text-emerald-600 bg-emerald-50 text-[10px] font-extrabold px-2 py-0.5 rounded border border-emerald-200">
-                    Compra Verificada
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Male Teacher */}
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col h-full">
-              <div className="relative h-48 w-full bg-stone-100 overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1580894732444-8fecef2271ff?auto=format&fit=crop&q=80&w=800" 
-                  alt="Professor Roberto sorrindo animado" 
+                  src="https://images.unsplash.com/photo-1607746882042-944635dfe10e?auto=format&fit=crop&q=80&w=800" 
+                  alt="Professora Sandra Sousa sorrindo em sala de aula" 
                   className="w-full h-full object-cover object-center hover:scale-105 transition duration-500"
                   referrerPolicy="no-referrer"
                 />
                 <div className="absolute bottom-3 left-3 bg-gabarito-brown text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm font-mono">
-                  ★ DEPOIMENTO REAL
+                  ★ SERVIDORA PÚBLICA ESTADUAL
                 </div>
               </div>
-              <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                <div className="space-y-2">
+              <div className="p-6 md:p-8 flex-1 flex flex-col justify-between space-y-4">
+                <div className="space-y-2.5">
                   <div className="flex text-amber-500 text-sm gap-0.5">
                     <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
                     <span className="text-stone-700 font-bold text-xs ml-1">(5.0)</span>
                   </div>
-                  <h3 className="font-bold text-stone-900 text-lg">
-                    "Precisão absoluta e feedback imediato"
+                  <h3 className="font-bold text-stone-900 text-xl">
+                    "O Gabarito IA foi a salvação para minhas classes cheias!"
                   </h3>
-                  <p className="text-stone-600 text-xs md:text-sm leading-relaxed">
-                    "Meus alunos adoraram a rapidez! Assim que eles entregam os testes, eu já consigo apontar as notas e as questões exatas que precisam de atenção. O painel de estatísticas me mostra quais conteúdos a turma mais errou, guiando minhas próximas aulas de forma cirúrgica."
+                  <p className="text-stone-600 text-sm leading-relaxed">
+                    "Como funcionária pública de escola estadual, tenho turmas com mais de 40 alunos. O Gabarito IA foi a minha maior salvação! Ele corrige dezenas de provas instantaneamente usando a câmera do celular. O aplicativo é rápido, preciso e me devolveu os finais de semana de descanso!"
                   </p>
                 </div>
-                <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
+                <div className="pt-4 border-t border-stone-100 flex items-center justify-between">
                   <div>
-                    <h4 className="font-bold text-stone-800 text-sm">Prof. Roberto Silveira</h4>
-                    <p className="text-stone-500 text-[11px]">Professor de Matemática • Ensino Fundamental</p>
+                    <h4 className="font-bold text-stone-800 text-sm">Profª. Sandra Sousa</h4>
+                    <p className="text-stone-500 text-[11px]">Professora de Língua Portuguesa • Rede Estadual</p>
                   </div>
-                  <span className="text-emerald-600 bg-emerald-50 text-[10px] font-extrabold px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="text-emerald-600 bg-emerald-50 text-[10px] font-extrabold px-2.5 py-1 rounded border border-emerald-200 uppercase tracking-wider font-mono">
                     Compra Verificada
                   </span>
                 </div>
@@ -1379,12 +1341,12 @@ export default function App() {
                 Simplifique Suas Correções Hoje Mesmo!
               </h3>
               <p className="text-amber-100/90 text-xs md:text-sm max-w-xl">
-                Pare de desperdiçar fins de semana inteiros com caneta vermelha. Tenha acesso a um aplicativo moderno, seguro e desenvolvido especialmente para a realidade dos professores brasileiros.
+                Pare de desperdiçar finais de semana inteiros com caneta vermelha. Tenha acesso a um aplicativo moderno, seguro e desenvolvido especialmente para a realidade dos professores brasileiros.
               </p>
             </div>
             <div className="shrink-0 flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
               <a 
-                href="#gabarito-download-card"
+                href="#gabarito-btn-download"
                 className="w-full sm:w-auto text-center bg-amber-400 hover:bg-amber-500 text-stone-900 font-extrabold px-6 py-3 rounded-xl transition duration-200 shadow-sm text-sm"
               >
                 Garantir Meu Acesso
