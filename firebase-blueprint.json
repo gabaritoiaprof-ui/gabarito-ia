@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "Class": {
+      "title": "Class",
+      "description": "Uma turma cadastrada pelo professor",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Nome da turma (Ex: 9º Ano A)" },
+        "subject": { "type": "string", "description": "Disciplina (Ex: Matemática)" },
+        "studentCount": { "type": "integer", "description": "Quantidade de alunos" },
+        "ownerId": { "type": "string", "description": "UID do professor proprietário" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Data de criação" }
+      },
+      "required": ["name", "subject", "studentCount", "ownerId", "createdAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Um estudante matriculado na turma",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Nome completo do estudante" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Data de cadastro" },
+        "ownerId": { "type": "string", "description": "UID do professor" }
+      },
+      "required": ["name", "createdAt", "ownerId"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Gabarito oficial de uma avaliação",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Nome da avaliação (Ex: Prova Bimestral 1)" },
+        "numQuestions": { "type": "integer", "description": "Número de questões" },
+        "officialKey": {
+          "type": "array",
+          "description": "Array contendo as respostas corretas"
+        },
+        "ownerId": { "type": "string", "description": "UID do professor" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Data de criação" }
+      },
+      "required": ["name", "numQuestions", "officialKey", "ownerId", "createdAt"]
+    },
+    "GradedResult": {
+      "title": "GradedResult",
+      "description": "Resultado da correção de prova de um estudante",
+      "type": "object",
+      "properties": {
+        "studentName": { "type": "string", "description": "Nome do estudante" },
+        "studentAnswers": { "type": "array", "description": "Respostas fornecidas pelo aluno" },
+        "score": { "type": "number", "description": "Nota final (0 a 10)" },
+        "correctCount": { "type": "integer", "description": "Quantidade de acertos" },
+        "totalQuestions": { "type": "integer", "description": "Total de questões" },
+        "aiFeedback": { "type": "string", "description": "Feedback pedagógico gerado por IA" },
+        "ownerId": { "type": "string", "description": "UID do professor" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Data de correção" }
+      },
+      "required": ["studentName", "studentAnswers", "score", "correctCount", "totalQuestions", "aiFeedback", "ownerId", "createdAt"]
+    },
+    "AdminSettings": {
+      "title": "AdminSettings",
+      "description": "Configurações globais do sistema de administração",
+      "type": "object",
+      "properties": {
+        "pin": { "type": "string", "description": "Código PIN para acesso ao Painel Admin" }
+      },
+      "required": ["pin"]
+    }
+  },
+  "firestore": {
+    "/classes/{classId}": {
+      "schema": "Class",
+      "description": "Coleção de turmas do professor"
+    },
+    "/classes/{classId}/students/{studentId}": {
+      "schema": "Student",
+      "description": "Subcoleção contendo alunos matriculados na turma"
+    },
+    "/classes/{classId}/exams/{examId}": {
+      "schema": "Exam",
+      "description": "Subcoleção contendo os gabaritos oficiais criados para a turma"
+    },
+    "/classes/{classId}/exams/{examId}/results/{resultId}": {
+      "schema": "GradedResult",
+      "description": "Subcoleção de resultados de provas corrigidas"
+    },
+    "/admin_settings/{configId}": {
+      "schema": "AdminSettings",
+      "description": "Coleção para salvar o PIN e preferências de acesso administrativo"
+    }
+  }
+}

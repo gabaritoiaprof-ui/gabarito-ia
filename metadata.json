@@ -1,0 +1,6 @@
+{
+  "name": "Gabarito IA",
+  "description": "Correção inteligente de provas com Inteligência Artificial. Baixe o APK do aplicativo e explore os recursos de criação de salas, importação de alunos, geração de gabaritos e correção de provas por fotos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

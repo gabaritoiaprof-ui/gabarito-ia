@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Class Validation
+    function isValidClass(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.subject is string && data.subject.size() > 0 && data.subject.size() <= 100
+        && data.studentCount is int && data.studentCount >= 0
+        && data.ownerId == request.auth.uid;
+    }
+
+    // Student Validation
+    function isValidStudent(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.ownerId == request.auth.uid;
+    }
+
+    // Exam Validation
+    function isValidExam(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.numQuestions is int && data.numQuestions >= 1 && data.numQuestions <= 20
+        && data.officialKey is list && data.officialKey.size() <= 20
+        && data.ownerId == request.auth.uid;
+    }
+
+    // GradedResult Validation
+    function isValidGradedResult(data) {
+      return data.studentName is string && data.studentName.size() > 0 && data.studentName.size() <= 100
+        && data.studentAnswers is list && data.studentAnswers.size() <= 20
+        && (data.score is number || data.score is int) && data.score >= 0.0 && data.score <= 10.0
+        && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 20
+        && data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 20
+        && data.aiFeedback is string && data.aiFeedback.size() <= 5000
+        && data.ownerId == request.auth.uid;
+    }
+
+    // Relational Check for Subcollections (Fetch parent Class to ensure correct owner)
+    function isClassOwner(classId) {
+      return isOwner(get(/databases/$(database)/documents/classes/$(classId)).data.ownerId);
+    }
+
+    // Classes Collection
+    match /classes/{classId} {
+      allow get: if isEmailVerified() && isValidId(classId) && isOwner(resource.data.ownerId);
+      allow list: if isEmailVerified() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isEmailVerified() && isValidId(classId) && isValidClass(request.resource.data)
+                    && request.resource.data.createdAt == request.time;
+                    
+      allow update: if isEmailVerified() && isValidId(classId) && isValidClass(request.resource.data)
+                    && request.resource.data.ownerId == resource.data.ownerId
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && (
+                      // Ensure updates are done safely on studentCount or class metadata
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'subject', 'studentCount'])
+                    );
+                    
+      allow delete: if isEmailVerified() && isValidId(classId) && isOwner(resource.data.ownerId);
+
+      // Students Subcollection
+      match /students/{studentId} {
+        allow get, delete: if isEmailVerified() && isValidId(studentId) && isClassOwner(classId);
+        allow list: if isEmailVerified() && isClassOwner(classId);
+        
+        allow create: if isEmailVerified() && isValidId(studentId) && isClassOwner(classId) 
+                      && isValidStudent(request.resource.data)
+                      && request.resource.data.createdAt == request.time;
+                      
+        allow update: if isEmailVerified() && isValidId(studentId) && isClassOwner(classId)
+                      && isValidStudent(request.resource.data)
+                      && request.resource.data.ownerId == resource.data.ownerId
+                      && request.resource.data.createdAt == resource.data.createdAt
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+      }
+
+      // Exams Subcollection
+      match /exams/{examId} {
+        allow get, delete: if isEmailVerified() && isValidId(examId) && isClassOwner(classId);
+        allow list: if isEmailVerified() && isClassOwner(classId);
+        
+        allow create: if isEmailVerified() && isValidId(examId) && isClassOwner(classId)
+                      && isValidExam(request.resource.data)
+                      && request.resource.data.createdAt == request.time;
+                      
+        allow update: if isEmailVerified() && isValidId(examId) && isClassOwner(classId)
+                      && isValidExam(request.resource.data)
+                      && request.resource.data.ownerId == resource.data.ownerId
+                      && request.resource.data.createdAt == resource.data.createdAt
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'numQuestions', 'officialKey']);
+
+        // Results Subcollection
+        match /results/{resultId} {
+          allow get, delete: if isEmailVerified() && isValidId(resultId) && isClassOwner(classId);
+          allow list: if isEmailVerified() && isClassOwner(classId);
+          
+          allow create: if isEmailVerified() && isValidId(resultId) && isClassOwner(classId)
+                        && isValidGradedResult(request.resource.data)
+                        && request.resource.data.createdAt == request.time;
+                        
+          allow update: if isEmailVerified() && isValidId(resultId) && isClassOwner(classId)
+                        && isValidGradedResult(request.resource.data)
+                        && request.resource.data.ownerId == resource.data.ownerId
+                        && request.resource.data.createdAt == resource.data.createdAt
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentName', 'studentAnswers', 'score', 'correctCount', 'totalQuestions', 'aiFeedback']);
+        }
+      }
+    }
+
+    // Admin Settings Collection for storing access PIN and other global settings securely
+    match /admin_settings/{configId} {
+      allow get: if true;
+      allow create, update: if isSignedIn() && isValidId(configId)
+                            && request.resource.data.keys().hasAll(['pin'])
+                            && request.resource.data.pin is string
+                            && request.resource.data.pin.size() >= 4
+                            && request.resource.data.pin.size() <= 20;
+      allow delete: if false; // do not allow deleting the PIN configuration
+    }
+  }
+}
