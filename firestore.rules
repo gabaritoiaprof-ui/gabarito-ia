@@ -139,5 +139,24 @@ service cloud.firestore {
                             && request.resource.data.pin.size() <= 20;
       allow delete: if false; // do not allow deleting the PIN configuration
     }
+
+    // App Settings Collection for storing links and APK metadata
+    match /app_settings/{configId} {
+      allow get: if true;
+      allow create, update: if isSignedIn() && isValidId(configId)
+                            && request.resource.data.pcLink is string
+                            && request.resource.data.shareLink is string;
+      allow delete: if false;
+    }
+
+    // Apk Chunks Collection for storing chunked APK files
+    match /apk_chunks/{chunkId} {
+      allow get: if true;
+      allow list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(chunkId)
+                            && request.resource.data.index is int
+                            && request.resource.data.data is string;
+      allow delete: if isSignedIn();
+    }
   }
 }

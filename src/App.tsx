@@ -158,6 +158,10 @@ export default function App() {
   const [newPinInput, setNewPinInput] = useState("");
   const [changingPin, setChangingPin] = useState(false);
   
+  // Custom link states inside admin
+  const [pcLinkInput, setPcLinkInput] = useState("");
+  const [shareLinkInput, setShareLinkInput] = useState("");
+  
   // Custom APK states
   const [customApkInfo, setCustomApkInfo] = useState<{
     customApkExists: boolean;
@@ -169,16 +173,105 @@ export default function App() {
   const [apkError, setApkError] = useState("");
   const [apkSuccess, setApkSuccess] = useState("");
 
+  // App Settings States (PC Link, Share Link)
+  const [pcLink, setPcLink] = useState("https://gabarito-ia-prof.base44.app/login");
+  const [shareLink, setShareLink] = useState("");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsSuccess, setSettingsSuccess] = useState("");
+  const [settingsError, setSettingsError] = useState("");
+
+  // Fetch App Settings
+  const fetchAppSettings = async () => {
+    try {
+      const res = await fetch("/api/app-settings");
+      const contentType = res.headers.get("Content-Type");
+      if (res.ok && contentType && contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data.pcLink) setPcLink(data.pcLink);
+        if (data.shareLink !== undefined) setShareLink(data.shareLink);
+        localStorage.setItem("local_app_settings", JSON.stringify(data));
+      } else {
+        const local = localStorage.getItem("local_app_settings");
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (parsed.pcLink) setPcLink(parsed.pcLink);
+          if (parsed.shareLink !== undefined) setShareLink(parsed.shareLink);
+        }
+      }
+    } catch (err) {
+      console.warn("Erro ao buscar configurações globais (usando local):", err);
+      const local = localStorage.getItem("local_app_settings");
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          if (parsed.pcLink) setPcLink(parsed.pcLink);
+          if (parsed.shareLink !== undefined) setShareLink(parsed.shareLink);
+        } catch (_) {}
+      }
+    }
+  };
+
+  const handleSaveAppSettings = async (newPc: string, newShare: string) => {
+    setIsSavingSettings(true);
+    setSettingsSuccess("");
+    setSettingsError("");
+    
+    // Optimistic / Local sync
+    setPcLink(newPc);
+    setShareLink(newShare);
+    const mockSettings = { pcLink: newPc, shareLink: newShare };
+    localStorage.setItem("local_app_settings", JSON.stringify(mockSettings));
+    
+    try {
+      const res = await fetch("/api/app-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mockSettings)
+      });
+      const contentType = res.headers.get("Content-Type");
+      if (res.ok && contentType && contentType.includes("application/json")) {
+        setSettingsSuccess("Links salvos e atualizados com sucesso!");
+        setTimeout(() => setSettingsSuccess(""), 4000);
+      } else {
+        setSettingsSuccess("Salvo localmente no navegador!");
+        setTimeout(() => setSettingsSuccess(""), 4000);
+      }
+    } catch (err: any) {
+      console.warn("Erro ao enviar configurações ao servidor, mantido localmente:", err);
+      setSettingsSuccess("Salvo localmente no navegador!");
+      setTimeout(() => setSettingsSuccess(""), 4000);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   // Fetch custom APK info
   const fetchCustomApkInfo = async () => {
     try {
       const res = await fetch("/api/custom-apk-info");
-      if (res.ok) {
+      const contentType = res.headers.get("Content-Type");
+      if (res.ok && contentType && contentType.includes("application/json")) {
         const data = await res.json();
         setCustomApkInfo(data);
+        // Sync to localStorage as backup
+        localStorage.setItem("local_custom_apk_meta", JSON.stringify(data));
+      } else {
+        // If the server doesn't respond with JSON (e.g., static deploy or error)
+        // load from localStorage if available
+        const localMeta = localStorage.getItem("local_custom_apk_meta");
+        if (localMeta) {
+          setCustomApkInfo(JSON.parse(localMeta));
+        }
       }
     } catch (err) {
       console.error("Erro ao buscar informações do APK customizado:", err);
+      // Fallback to localStorage
+      const localMeta = localStorage.getItem("local_custom_apk_meta");
+      if (localMeta) {
+        try {
+          setCustomApkInfo(JSON.parse(localMeta));
+        } catch (_) {}
+      }
     }
   };
 
@@ -202,7 +295,16 @@ export default function App() {
   useEffect(() => {
     fetchCustomApkInfo();
     fetchAdminPin();
+    fetchAppSettings();
   }, []);
+
+  // Sync admin link inputs when the secret panel is opened
+  useEffect(() => {
+    if (showAdminPanel) {
+      setPcLinkInput(pcLink);
+      setShareLinkInput(shareLink);
+    }
+  }, [showAdminPanel, pcLink, shareLink]);
 
   // Monitor Auth State
   useEffect(() => {
@@ -565,6 +667,39 @@ export default function App() {
     }
   };
 
+  const handleLocalApkUploadFallback = (file: File, base64Data: string) => {
+    try {
+      const mockMeta = {
+        customApkExists: true,
+        originalName: file.name,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        isLocalFallback: true
+      };
+      
+      // Store metadata in localStorage
+      localStorage.setItem("local_custom_apk_meta", JSON.stringify(mockMeta));
+      
+      // Store file payload in localStorage if small, else just keep in session
+      if (base64Data.length < 3.5 * 1024 * 1024) {
+        try {
+          localStorage.setItem("local_custom_apk_file", base64Data);
+        } catch (e) {
+          console.warn("Arquivo APK grande para LocalStorage, mantido apenas na sessão ativa.");
+        }
+      }
+      
+      // Save globally in window object for session-based downloads
+      (window as any).__local_apk_file_data = base64Data;
+      (window as any).__local_apk_file_name = file.name;
+
+      setCustomApkInfo(mockMeta);
+      setApkSuccess("Upload Concluído! Detectamos um ambiente estático (ex: Vercel) e salvamos seu APK com segurança na memória local do seu navegador!");
+    } catch (err: any) {
+      setApkError("Erro no armazenamento temporário do APK: " + err.message);
+    }
+  };
+
   const handleApkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -582,16 +717,31 @@ export default function App() {
     reader.onload = async (event) => {
       try {
         const base64Data = event.target?.result as string;
-        const res = await fetch("/api/upload-apk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            filename: file.name,
-            base64Data
-          })
-        });
+        
+        let res;
+        try {
+          res = await fetch("/api/upload-apk", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              base64Data
+            })
+          });
+        } catch (fetchErr: any) {
+          console.warn("Servidor inacessível, salvando localmente no navegador:", fetchErr);
+          handleLocalApkUploadFallback(file, base64Data);
+          return;
+        }
+
+        const contentType = res.headers.get("Content-Type");
+        if (!res.ok || !contentType || !contentType.includes("application/json")) {
+          console.warn("Resposta não é JSON (ambiente estático Vercel ou similar). Salvando localmente.");
+          handleLocalApkUploadFallback(file, base64Data);
+          return;
+        }
 
         const data = await res.json();
         if (res.ok && data.success) {
@@ -991,7 +1141,23 @@ export default function App() {
   const triggerDownloadApkHelp = () => {
     setShowApkInstructions(true);
     
-    // 1. Trigger download of the APK file from the server
+    // Check if we are in local fallback mode
+    if (customApkInfo?.isLocalFallback) {
+      const base64Data = (window as any).__local_apk_file_data || localStorage.getItem("local_custom_apk_file");
+      const filename = (window as any).__local_apk_file_name || customApkInfo?.originalName || "gabarito_ia.apk";
+
+      if (base64Data) {
+        const apkLink = document.createElement("a");
+        apkLink.href = base64Data;
+        apkLink.download = filename;
+        document.body.appendChild(apkLink);
+        apkLink.click();
+        document.body.removeChild(apkLink);
+        return;
+      }
+    }
+
+    // Standard download from backend
     const apkLink = document.createElement("a");
     apkLink.href = "/api/download-apk";
     apkLink.download = customApkInfo?.originalName || "gabarito_ia.apk";
@@ -1001,7 +1167,10 @@ export default function App() {
   };
 
   const handleCopyDownloadLink = () => {
-    const directUrl = window.location.origin + "/api/download-apk";
+    const directUrl = customApkInfo?.isLocalFallback 
+      ? window.location.origin + "#local-apk" 
+      : window.location.origin + "/api/download-apk";
+      
     navigator.clipboard.writeText(directUrl)
       .then(() => {
         setCopiedLink(true);
@@ -1013,7 +1182,7 @@ export default function App() {
   };
 
   const copyShareLinkToClipboard = () => {
-    const pageUrl = window.location.origin;
+    const pageUrl = shareLink ? shareLink : window.location.origin;
     navigator.clipboard.writeText(pageUrl)
       .then(() => {
         setCopiedShareLink(true);
@@ -1025,7 +1194,7 @@ export default function App() {
   };
 
   const handleSharePage = () => {
-    const pageUrl = window.location.origin;
+    const pageUrl = shareLink ? shareLink : window.location.origin;
     const shareData = {
       title: "Gabarito IA - Correção Inteligente de Provas",
       text: "Baixe o aplicativo Gabarito IA para Android e corrija suas provas e gabaritos em segundos com inteligência artificial!",
@@ -1124,12 +1293,15 @@ export default function App() {
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-center gap-4 w-full max-w-2xl px-4">
               {/* BUTTON 1: BAIXAR APK */}
               <a
-                href="/api/download-apk"
+                href={customApkInfo?.isLocalFallback ? "#" : "/api/download-apk"}
                 download={customApkInfo?.originalName || "gabarito_ia.apk"}
-                target="_blank"
+                target={customApkInfo?.isLocalFallback ? "_self" : "_blank"}
                 rel="noopener noreferrer"
-                onClick={() => {
-                  setShowApkInstructions(true);
+                onClick={(e) => {
+                  if (customApkInfo?.isLocalFallback) {
+                    e.preventDefault();
+                  }
+                  triggerDownloadApkHelp();
                 }}
                 className="flex-1 bg-gabarito-brown hover:bg-[#43291c] text-white font-bold px-6 py-4 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2.5 text-base md:text-lg cursor-pointer transform hover:scale-[1.01] active:scale-[0.99] no-underline"
                 id="gabarito-btn-download"
@@ -1155,7 +1327,7 @@ export default function App() {
 
               {/* BUTTON 2: ENTRAR COM O PC (HIGHLIGHTED / DESTACADO) */}
               <a
-                href="https://gabarito-ia-prof.base44.app/login"
+                href={pcLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-4 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2.5 text-base md:text-lg cursor-pointer transform hover:scale-[1.01] active:scale-[0.99] no-underline border-b-4 border-blue-800"
@@ -1352,7 +1524,7 @@ export default function App() {
                 Garantir Meu Acesso
               </a>
               <a 
-                href="https://gabarito-ia-prof.base44.app/login"
+                href={pcLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full sm:w-auto text-center bg-transparent hover:bg-white/10 text-white border border-white/30 font-bold px-5 py-3 rounded-xl transition duration-200 text-sm"
@@ -2202,14 +2374,13 @@ export default function App() {
                 <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 text-xl font-bold">
                   🔑
                 </div>
-                <h3 className="text-base font-bold text-white tracking-tight">Acesso ao Painel Admin</h3>
-                <p className="text-xs text-stone-400">Insira o PIN secreto para autenticar e entrar no painel.</p>
+                <h3 className="text-base font-bold text-white tracking-tight">Digite o PIN</h3>
               </div>
 
               <div className="space-y-3">
                 <input 
                   type="password"
-                  placeholder="Digite o PIN (Padrão: 5074)"
+                  placeholder="Digite o PIN"
                   value={pinInput}
                   onChange={(e) => {
                     setPinInput(e.target.value);
@@ -2382,6 +2553,57 @@ export default function App() {
                     {apkError && (
                       <p className="text-rose-400 text-xs font-medium font-mono">✗ {apkError}</p>
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Gerenciamento de Links */}
+              <div className="space-y-3 bg-stone-950/40 p-4 rounded-2xl border border-stone-800/80">
+                <h4 className="text-xs font-black text-white uppercase font-mono tracking-wider text-stone-300 border-b border-stone-800 pb-1.5 flex items-center gap-1.5">
+                  <Monitor className="w-3.5 h-3.5 text-blue-400" />
+                  Atualizar Links Globais (Entrar no PC e Compartilhar)
+                </h4>
+                
+                <div className="text-xs space-y-3">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-stone-300">Link "Entrar com o PC":</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: https://gabarito-ia-prof.base44.app/login"
+                      value={pcLinkInput}
+                      onChange={(e) => setPcLinkInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-white font-mono text-xs focus:outline-hidden focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-stone-300">Link "Compartilhar Página" (Deixe em branco para usar o endereço atual):</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: https://meu-gabarito.com"
+                      value={shareLinkInput}
+                      onChange={(e) => setShareLinkInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-white font-mono text-xs focus:outline-hidden focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div>
+                      {settingsSuccess && (
+                        <p className="text-emerald-400 text-xs font-medium font-mono">✓ {settingsSuccess}</p>
+                      )}
+                      {settingsError && (
+                        <p className="text-rose-400 text-xs font-medium font-mono">✗ {settingsError}</p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handleSaveAppSettings(pcLinkInput, shareLinkInput)}
+                      disabled={isSavingSettings}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-stone-800 disabled:text-stone-500 text-white font-bold text-xs rounded-xl transition cursor-pointer font-mono"
+                    >
+                      {isSavingSettings ? "Salvando..." : "Salvar Configurações"}
+                    </button>
                   </div>
                 </div>
               </div>

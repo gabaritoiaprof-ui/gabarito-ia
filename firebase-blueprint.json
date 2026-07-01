@@ -64,6 +64,31 @@
         "pin": { "type": "string", "description": "Código PIN para acesso ao Painel Admin" }
       },
       "required": ["pin"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Configurações globais do aplicativo (links de PC e compartilhamento e metadados do APK)",
+      "type": "object",
+      "properties": {
+        "pcLink": { "type": "string", "description": "Link para entrar com o PC" },
+        "shareLink": { "type": "string", "description": "Link para compartilhar a página" },
+        "customApkExists": { "type": "boolean", "description": "Se existe APK personalizado" },
+        "originalName": { "type": "string", "description": "Nome original do arquivo APK" },
+        "size": { "type": "integer", "description": "Tamanho em bytes do arquivo APK" },
+        "uploadedAt": { "type": "string", "format": "date-time", "description": "Data de upload do APK" }
+      },
+      "required": ["pcLink", "shareLink"]
+    },
+    "ApkChunk": {
+      "title": "ApkChunk",
+      "description": "Pedaço/segmento do arquivo APK codificado em base64",
+      "type": "object",
+      "properties": {
+        "index": { "type": "integer", "description": "Índice do chunk (0-indexed)" },
+        "data": { "type": "string", "description": "Dados do chunk em base64" },
+        "uploadedAt": { "type": "string", "format": "date-time", "description": "Data de upload" }
+      },
+      "required": ["index", "data", "uploadedAt"]
     }
   },
   "firestore": {
@@ -86,6 +111,14 @@
     "/admin_settings/{configId}": {
       "schema": "AdminSettings",
       "description": "Coleção para salvar o PIN e preferências de acesso administrativo"
+    },
+    "/app_settings/{configId}": {
+      "schema": "AppSettings",
+      "description": "Configurações gerais e metadados de APK"
+    },
+    "/apk_chunks/{chunkId}": {
+      "schema": "ApkChunk",
+      "description": "Coleção para armazenar fragmentos do APK de forma resiliente"
     }
   }
 }

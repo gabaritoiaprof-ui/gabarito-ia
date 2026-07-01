@@ -4,6 +4,8 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
 
 dotenv.config();
 
@@ -11,6 +13,22 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "100mb" }));
+
+// Initialize Firebase on Node server
+let db: any = null;
+try {
+  const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(firebaseConfigPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8"));
+    const firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+    console.log("Firebase inicializado com sucesso no backend!");
+  } else {
+    console.warn("firebase-applet-config.json não encontrado. Operações de banco de dados rodarão em modo offline.");
+  }
+} catch (error) {
+  console.error("Erro ao inicializar Firebase no backend:", error);
+}
 
 // Helper to initialize Gemini SDK safely
 function getGeminiClient() {
@@ -214,12 +232,61 @@ Retorne estritamente um JSON estruturado com os seguintes campos:
 });
 
 // API endpoint to download the mock or custom Gabarito IA APK file
-app.get("/api/download-apk", (req, res) => {
+app.get("/api/download-apk", async (req, res) => {
+  let customApkExists = false;
+  let filename = "gabarito_ia.apk";
+
+  // Try checking from Firestore first
+  if (db) {
+    try {
+      const docRef = doc(db, "app_settings", "apk_config");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.customApkExists) {
+          customApkExists = true;
+          filename = data.originalName || "gabarito_ia.apk";
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao ler metadados do APK para download do Firestore:", err);
+    }
+  }
+
+  // If custom APK exists in database, reconstruct and stream it!
+  if (customApkExists && db) {
+    try {
+      console.log(`[Database] Reconstruindo APK [${filename}] a partir do Firestore...`);
+      const chunksSnap = await getDocs(collection(db, "apk_chunks"));
+      const sortedDocs = chunksSnap.docs
+        .map(d => d.data())
+        .sort((a, b) => a.index - b.index);
+
+      if (sortedDocs.length > 0) {
+        const fullBase64 = sortedDocs.map(docData => docData.data).join("");
+        const buffer = Buffer.from(fullBase64, "base64");
+        
+        // Save to local cache asynchronously for faster subsequent downloads!
+        const targetPath = path.join(process.cwd(), "custom_gabarito_ia.apk");
+        try {
+          fs.writeFileSync(targetPath, buffer);
+        } catch (_) {}
+
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", "application/vnd.android.package-archive");
+        res.setHeader("Content-Length", buffer.length);
+        return res.send(buffer);
+      }
+    } catch (err) {
+      console.error("Erro ao reconstruir APK a partir dos chunks do Firestore:", err);
+    }
+  }
+
+  // Fallback to local custom file if Firestore failed or is empty
   const customApkPath = path.join(process.cwd(), "custom_gabarito_ia.apk");
   const metaPath = path.join(process.cwd(), "custom_apk_meta.json");
   
   if (fs.existsSync(customApkPath)) {
-    let filename = "gabarito_ia.apk";
     if (fs.existsSync(metaPath)) {
       try {
         const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
@@ -231,7 +298,7 @@ app.get("/api/download-apk", (req, res) => {
     return res.sendFile(customApkPath);
   }
 
-  // Fallback to simulator mock if no custom file exists
+  // Fallback to simulator mock if no custom file exists anywhere
   res.setHeader("Content-Disposition", 'attachment; filename="gabarito_ia.apk"');
   res.setHeader("Content-Type", "application/vnd.android.package-archive");
   
@@ -250,8 +317,8 @@ app.get("/api/download-apk", (req, res) => {
   res.send(fullFile);
 });
 
-// API endpoint to save an uploaded custom APK file to the server disk
-app.post("/api/upload-apk", (req, res) => {
+// API endpoint to save an uploaded custom APK file to the server database & disk
+app.post("/api/upload-apk", async (req, res) => {
   const { base64Data, filename } = req.body;
   if (!base64Data) {
     return res.status(400).json({ error: "Nenhum arquivo enviado." });
@@ -261,25 +328,84 @@ app.post("/api/upload-apk", (req, res) => {
     const cleanBase64 = base64Data.replace(/^data:.*;base64,/, "");
     const buffer = Buffer.from(cleanBase64, "base64");
     
+    // 1. Save to local disk cache
     const targetPath = path.join(process.cwd(), "custom_gabarito_ia.apk");
     fs.writeFileSync(targetPath, buffer);
 
     const metaPath = path.join(process.cwd(), "custom_apk_meta.json");
-    fs.writeFileSync(metaPath, JSON.stringify({
+    const metaData = {
       originalName: filename || "gabarito_ia.apk",
       size: buffer.length,
       uploadedAt: new Date().toISOString()
-    }));
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(metaData));
 
-    return res.json({ success: true, message: "Arquivo APK salvo com sucesso no servidor!" });
+    // 2. Upload to Firestore chunks and metadata
+    if (db) {
+      console.log(`[Database] Chunking and uploading APK [${filename}] to Firestore...`);
+      // Split base64 into chunks of 700KB to fit easily within the 1MB Firestore document limit
+      const CHUNK_CHAR_LIMIT = 700 * 1024;
+      const chunks: string[] = [];
+      for (let i = 0; i < cleanBase64.length; i += CHUNK_CHAR_LIMIT) {
+        chunks.push(cleanBase64.substring(i, i + CHUNK_CHAR_LIMIT));
+      }
+
+      try {
+        // Clear any old chunks
+        const querySnapshot = await getDocs(collection(db, "apk_chunks"));
+        for (const d of querySnapshot.docs) {
+          await deleteDoc(doc(db, "apk_chunks", d.id));
+        }
+
+        // Save new chunks
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkDocId = `chunk_${i}`;
+          await setDoc(doc(db, "apk_chunks", chunkDocId), {
+            index: i,
+            data: chunks[i],
+            uploadedAt: new Date().toISOString()
+          });
+        }
+
+        // Save APK metadata document in AppSettings
+        await setDoc(doc(db, "app_settings", "apk_config"), {
+          customApkExists: true,
+          ...metaData
+        });
+        
+        console.log(`[Database] APK [${filename}] salvo em ${chunks.length} chunks com sucesso no Firestore.`);
+      } catch (dbErr: any) {
+        console.error("Erro ao salvar APK no Firestore (salvo apenas em cache local):", dbErr);
+        return res.json({ success: true, message: "APK salvo apenas no cache local do servidor. Erro ao persistir no Firestore.", warning: dbErr.message });
+      }
+    }
+
+    return res.json({ success: true, message: "Arquivo APK salvo e sincronizado no banco de dados Firestore com sucesso!" });
   } catch (error: any) {
-    console.error("Erro ao salvar APK no servidor:", error);
+    console.error("Erro ao salvar APK:", error);
     return res.status(500).json({ error: "Erro interno ao salvar arquivo.", details: error.message });
   }
 });
 
 // API endpoint to retrieve info about the custom APK
-app.get("/api/custom-apk-info", (req, res) => {
+app.get("/api/custom-apk-info", async (req, res) => {
+  // Check from Firestore first
+  if (db) {
+    try {
+      const docRef = doc(db, "app_settings", "apk_config");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.customApkExists) {
+          return res.json({ customApkExists: true, ...data });
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao carregar custom-apk-info do Firestore:", err);
+    }
+  }
+
+  // Fallback to local metadata file
   const metaPath = path.join(process.cwd(), "custom_apk_meta.json");
   if (fs.existsSync(metaPath)) {
     try {
@@ -292,8 +418,8 @@ app.get("/api/custom-apk-info", (req, res) => {
   return res.json({ customApkExists: false });
 });
 
-// API endpoint to delete/revert custom APK file
-app.delete("/api/delete-custom-apk", (req, res) => {
+// API endpoint to delete/revert custom APK file from database & disk
+app.delete("/api/delete-custom-apk", async (req, res) => {
   const apkPath = path.join(process.cwd(), "custom_gabarito_ia.apk");
   const metaPath = path.join(process.cwd(), "custom_apk_meta.json");
   
@@ -304,11 +430,93 @@ app.delete("/api/delete-custom-apk", (req, res) => {
     if (fs.existsSync(metaPath)) {
       fs.unlinkSync(metaPath);
     }
-    return res.json({ success: true, message: "APK personalizado removido. Revertido para simulador padrão!" });
-  } catch (error: any) {
-    console.error("Erro ao deletar APK:", error);
-    return res.status(500).json({ error: "Erro ao remover arquivo.", details: error.message });
+  } catch (err) {
+    console.warn("Aviso ao deletar cache de APK local:", err);
   }
+
+  // Delete from Firestore
+  if (db) {
+    try {
+      await setDoc(doc(db, "app_settings", "apk_config"), { customApkExists: false });
+
+      const querySnapshot = await getDocs(collection(db, "apk_chunks"));
+      for (const d of querySnapshot.docs) {
+        await deleteDoc(doc(db, "apk_chunks", d.id));
+      }
+    } catch (dbErr: any) {
+      console.error("Erro ao deletar APK do Firestore:", dbErr);
+      return res.status(500).json({ error: "Erro ao deletar do Firestore.", details: dbErr.message });
+    }
+  }
+
+  return res.json({ success: true, message: "APK personalizado removido com sucesso de todas as fontes (banco e disco)!" });
+});
+
+// API endpoint to retrieve app settings (links for PC access and Share)
+app.get("/api/app-settings", async (req, res) => {
+  const defaults = {
+    pcLink: "https://gabarito-ia-prof.base44.app/login",
+    shareLink: ""
+  };
+
+  // Try loading from Firestore first
+  if (db) {
+    try {
+      const docRef = doc(db, "app_settings", "global_config");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        return res.json({
+          pcLink: data.pcLink || defaults.pcLink,
+          shareLink: data.shareLink || defaults.shareLink
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao ler app-settings do Firestore:", err);
+    }
+  }
+  
+  const settingsPath = path.join(process.cwd(), "app_settings.json");
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+      return res.json({ ...defaults, ...data });
+    } catch {
+      return res.json(defaults);
+    }
+  }
+  return res.json(defaults);
+});
+
+// API endpoint to update app settings
+app.post("/api/app-settings", async (req, res) => {
+  const { pcLink, shareLink } = req.body;
+  
+  const pc = typeof pcLink === "string" ? pcLink.trim() : "https://gabarito-ia-prof.base44.app/login";
+  const share = typeof shareLink === "string" ? shareLink.trim() : "";
+  const updated = { pcLink: pc, shareLink: share };
+
+  // 1. Save to local cache disk
+  const settingsPath = path.join(process.cwd(), "app_settings.json");
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(updated, null, 2));
+  } catch (err) {
+    console.warn("Aviso ao salvar arquivo de cache local de configurações:", err);
+  }
+
+  // 2. Save to Firestore
+  if (db) {
+    try {
+      const docRef = doc(db, "app_settings", "global_config");
+      await setDoc(docRef, updated, { merge: true });
+      return res.json({ success: true, message: "Configurações atualizadas no Firestore com sucesso!", settings: updated });
+    } catch (error: any) {
+      console.error("Erro ao salvar no Firestore:", error);
+      return res.json({ success: true, message: "Salvo localmente. Erro ao atualizar no Firestore.", settings: updated, warning: error.message });
+    }
+  }
+  
+  return res.json({ success: true, message: "Configurações atualizadas localmente!", settings: updated });
 });
 
 // Start server
