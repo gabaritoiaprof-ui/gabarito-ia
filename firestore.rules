@@ -131,25 +131,17 @@ service cloud.firestore {
 
     // Admin Settings Collection for storing access PIN and other global settings securely
     match /admin_settings/{configId} {
-      allow get: if true;
-      allow create, update: if isSignedIn() && isValidId(configId)
-                            && request.resource.data.keys().hasAll(['pin'])
-                            && request.resource.data.pin is string
-                            && request.resource.data.pin.size() >= 4
-                            && request.resource.data.pin.size() <= 20;
-      allow delete: if false; // do not allow deleting the PIN configuration
+      allow read, write: if true;
     }
 
     // App Settings Collection for storing links and APK metadata
     match /app_settings/{configId} {
-      allow read: if true;
-      allow write: if isValidId(configId);
+      allow read, write: if true;
     }
 
     // Apk Chunks Collection for storing chunked APK files
     match /apk_chunks/{chunkId} {
-      allow read: if true;
-      allow write: if isValidId(chunkId);
+      allow read, write: if true;
     }
   }
 }
